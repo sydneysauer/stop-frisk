@@ -3,6 +3,8 @@ library(here)
 library(tidyverse)
 library(lubridate)
 
+source("R/data_recoding.R")
+
 ### DATA LOADING
 # load individual data files
 sqf_2006 <- read_csv(here("data", "raw", "2006.csv"), col_types = cols(.default = col_character()))
@@ -33,3 +35,4 @@ summary_table <- combined %>%
   arrange(year)
 
 summary_table
+
