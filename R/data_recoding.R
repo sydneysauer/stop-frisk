@@ -80,3 +80,37 @@ clean_age <- function(age_raw) {
   return(age_int)
 }
 
+#' Recode raw SQF data to standardized format
+#'
+#' Transforms raw SQF data with inconsistent formatting into
+#' a clean, standardized format. Uses helper functions to
+#' ensure consistent recoding rules across all years.
+#'
+#' @param data_raw Tibble, raw SQF data from read_csv()
+#' @param year Integer, year of the data (for ID generation and date parsing)
+#' @return Tibble with standardized columns
+#'
+#' @examples
+#' sqf_2006_raw <- load_sqf_year(2006)
+#' sqf_2006_clean <- recode_sqf_year(sqf_2006_raw, 2006)
+recode_sqf_year <- function(data_raw, year) {
+  # Prepare for date parsing
+  date_format <- if_else(year == 2006, "Ymd", "mdY")
+  dt <- parse_sqf_datetime(data_raw$datestop, data_raw$timestop, date_format)
+  
+  clean <- transmute(data_raw, 
+                      id=paste(year, factor(1:length(data_raw)), sep="-"),
+                      date=format(dt, "%Y-%m-%d"),
+                      time=format(dt, "%H:%M"),
+                      year=as.integer(year),
+                      race=recode_race(race),
+                      female=if_else(sex == "F", TRUE, FALSE), # TODO: Check for missings
+                      age=clean_age(age),
+                      police_force=if_any(starts_with("pf_"), ~ . == "Y"),
+                      precinct=as.integer(pct),
+                      xcoord=as.numeric(xcoord),
+                      ycoord=as.numeric(ycoord)
+                    )
+  return(clean)
+}
+
