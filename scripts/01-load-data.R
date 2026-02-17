@@ -1,7 +1,5 @@
-### PROJECT SETUP
 library(here)
 library(tidyverse)
-library(lubridate)
 library(stringr)
 
 source("R/data_loading.R")
@@ -14,15 +12,17 @@ for (year in years) {
 }
 dfs <- mget(paste0("sqf_", years))
 names(dfs) <- as.character(years)
-combined <- dfs %>% 
+sqf <- dfs %>% 
   bind_rows(.id = "year")
 
+# Keep only consolidated df and years vector in environment
+rm(list = setdiff(ls(), c("sqf", "years")))
 
+# Save raw data as RDS
+saveRDS(sqf, file = here("data/sqf_raw.rds"))
 
-### INITIAL SUMMARY TABLE
-
-# summary by year: # events and % with any type of force
-summary_table <- combined %>%
+# Output initial summary table by year
+summary_table <- sqf %>%
   mutate(pf_any = if_any(starts_with("pf_"), ~ . == "Y")) %>%
   group_by(year) %>%
   summarise(
@@ -31,6 +31,4 @@ summary_table <- combined %>%
     .groups = "drop"
   ) %>%
   arrange(year)
-
 summary_table
-
