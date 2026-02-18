@@ -43,17 +43,19 @@ recode_race <- function(race_raw) {
 #' parse_sqf_datetime("2006-01-15", "1430", "Ymd")
 #' parse_sqf_datetime("01152007", "830", "mdY")
 parse_sqf_datetime <- function(datestop, timestop, date_format = "Ymd") {
-  # TODO: Return to the sentinel dates after validation
-      # Remove invalid sentinel dates (e.g., "1900-12-31", "12311900")
-      #datestop <- if_else(datestop %in% c("1900-12-31", "12311900"), NA_character_, datestop)
-  
+  # Remove invalid sentinel dates (e.g., "1900-12-31", "12311900")
+  datestop <- if_else(datestop %in% c("1900-12-31", "12311900"), NA_character_, datestop) 
   # Pad timestop to 4 characters
+  datestop <- str_pad(datestop, width = 8, pad = "0")
   timestop <- str_pad(timestop, width = 4, pad = "0")
   # Combine date and time strings
   datetime <- paste(datestop, timestop, sep=" ")
   order <- paste(date_format, " HM")
   # Parse with lubridate::parse_date_time()
   return(parse_date_time(datetime, order, "EST"))
+
+  # NOTE: Some dates and times failing to parse due to invalid values (eg, hour > 23). 
+  # These will become NA, which is acceptable for our purposes.
 }
 
 #' Clean age variable
@@ -74,9 +76,13 @@ parse_sqf_datetime <- function(datestop, timestop, date_format = "Ymd") {
 #' clean_age(c("25", "30", "99", "377"))
 clean_age <- function(age_raw) {
   age_int <- as.integer(age_raw)
+  # Remove invalid sentinel values
   age_int <- na_if(age_int, 99)
   age_int <- na_if(age_int, 377)
   age_int <- na_if(age_int, 999)
+  # Remove invalid ages outside plausible human range (0-100)
+  age_int <- if_else(age_int < 0 | age_int > 100, NA_integer_, age_int)
+
   return(age_int)
 }
 
@@ -99,18 +105,23 @@ recode_sqf_year <- function(data_raw, year) {
   dt <- parse_sqf_datetime(data_raw$datestop, data_raw$timestop, date_format)
   
   clean <- transmute(data_raw, 
-                      id=paste(year, factor(1:length(data_raw)), sep="-"),
+                      id=paste0(year, "-", seq_len(nrow(data_raw))),
                       date=format(dt, "%Y-%m-%d"),
                       time=format(dt, "%H:%M"),
                       year=as.integer(year),
                       race=recode_race(race),
-                      female=if_else(sex == "F", TRUE, FALSE), # TODO: Check for missings
+                      female=case_when(
+                          sex == "F" ~ TRUE,
+                          sex == "M" ~ FALSE,
+                          TRUE ~ NA
+                      ),
                       age=clean_age(age),
                       police_force=if_any(starts_with("pf_"), ~ . == "Y"),
                       precinct=as.integer(pct),
                       xcoord=as.numeric(xcoord),
                       ycoord=as.numeric(ycoord)
                     )
+  print("Year %s: %d rows recoded" %>% sprintf(year, nrow(clean)))
   return(clean)
 }
 
