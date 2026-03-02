@@ -1,8 +1,9 @@
 library(tidyverse)
+library(here)
 source("R/data_validation.R")
 
 # Load cleaned data
-sqf_clean <- read_rds("data/sqf_clean.rds")
+sqf_clean <- read_rds(here("data/sqf_clean.rds"))
 
 # Run validation
 validation <- validate_sqf_data(sqf_clean)
@@ -23,4 +24,4 @@ if (validation$passed) {
 }
 
 # Save validation report
-write_rds(validation, "output/validation_report.rds")
+write_rds(validation, here("output/validation_report.rds"))

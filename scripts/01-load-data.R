@@ -5,15 +5,8 @@ library(stringr)
 source("R/data_loading.R")
 
 # Read all years of data into one df
-years <- c(2006:2012)
-for (year in years) {
-  df <- read_sqf(year)
-  assign(paste0("sqf_", year), df)
-}
-dfs <- mget(paste0("sqf_", years))
-names(dfs) <- as.character(years)
-sqf <- dfs %>% 
-  bind_rows(.id = "year")
+years <- 2006:2012
+sqf <- map_dfr(years, ~ read_sqf(.x) %>% mutate(year = as.character(.x)))
 
 # Keep only consolidated df and years vector in environment
 rm(list = setdiff(ls(), c("sqf", "years")))

@@ -55,7 +55,7 @@ validate_sqf_data <- function(data) {
   missing_coords <- data %>%
     filter(is.na(xcoord) & is.na(ycoord)) %>%
     nrow()
-  if (missing_coords == length(data)) {
+  if (missing_coords == nrow(data)) {
     issues$missing_coordinates <- "All rows missing coordinates"
   }
 

@@ -106,8 +106,8 @@ recode_sqf_year <- function(data_raw, year) {
   
   clean <- transmute(data_raw, 
                       id=paste0(year, "-", seq_len(nrow(data_raw))),
-                      date=format(dt, "%Y-%m-%d"),
-                      time=format(dt, "%H:%M"),
+                      date=as.Date(dt),
+                      time=dt,
                       year=as.integer(year),
                       race=recode_race(race),
                       female=case_when(
