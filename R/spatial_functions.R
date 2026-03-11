@@ -80,3 +80,49 @@ spatial_join <- function(points, polygons) {
   }
   return(geocoded %>% filter(!is.na(ct_code))) # Drop points that don't match any polygon
 }
+
+#' Aggregate SQF stops by Census tract and year
+#'
+#' Computes summary statistics for each Census tract by year from
+#' geocoded stop-level data.
+#'
+#' @param geocoded_data sf object, geocoded SQF data (from spatial_join)
+#' @return Tibble with one row per tract-year: ct_code, year, total_stops,
+#'   stops_black, stops_hispanic, stops_white, pct_black, pct_force
+#'
+#' @examples
+#' tract_summary <- aggregate_by_tract_yr(sqf_geocoded)
+aggregate_by_tract_yr <- function(geocoded_data) {
+  aggregate <- geocoded_data %>%
+    st_set_geometry(NULL) %>%
+    group_by(ct_code, year) %>%
+    summarise(
+      ct_code = first(ct_code),
+      year = first(year),
+      total_stops = n(),
+      stops_black = sum(race == "Black", na.rm = TRUE),
+      stops_hispanic =  sum(race == "Hispanic", na.rm = TRUE),
+      stops_white = sum(race == "White", na.rm = TRUE), 
+      pct_black = stops_black / total_stops * 100,
+      pct_force = sum(police_force == TRUE, na.rm = TRUE) / total_stops * 100
+    ) %>%
+    ungroup()
+  return(aggregate)
+}
+
+#' Create a choropleth map of SQF data by Census tract
+#'
+#' @param tracts sf object with tract geometries and summary data
+#' @param fill_var Character, name of the variable to map
+#' @param trans Character, transformation for the fill scale (e.g., "log10")
+#' @param title Character, plot title
+#' @return ggplot object
+map_tracts <- function(tracts, fill_var, log = FALSE, title = "") {
+  trans <- ifelse(log, "log10", "identity")
+  map <- ggplot(tracts) +
+    geom_sf(aes(fill = .data[[fill_var]]), color = "white", linewidth = 0.05) +
+    scale_fill_viridis_c(trans = trans, na.value = "white") +
+    theme_void() +
+    labs(fill = fill_var, title = title) 
+  return(map)
+}

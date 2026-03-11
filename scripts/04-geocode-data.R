@@ -26,3 +26,22 @@ message(sprintf(
 # Save results
 write_rds(sqf_geocoded, here("data/sqf_geocoded.rds"), compress = "gz")
 write_rds(tracts, here("data/nyc_tracts.rds"), compress = "gz")
+
+# Aggregate by tract for each year
+# Note: I chose to modify the function to aggregate by tract and year rather than use map, for simplicity.
+tract_by_year <- aggregate_by_tract_yr(sqf_geocoded)
+
+# Rejoin tract summaries to geometry for mapping
+tracts_summary <- tracts %>%
+  left_join(tract_by_year, by = "ct_code") %>%
+  st_as_sf() # Ensure it remains an sf object
+
+# Create maps
+# Map 1: Total stops by tract
+map_1 <- map_tracts(tracts_summary, fill_var = "total_stops", 
+                    log=TRUE, title = "Total SQF Stops by Census Tract")
+ggsave(here("output/map_total_stops.png"), map_1, width = 10, height = 8)
+# Map 2: Percent of stops where force used
+map_2 <- map_tracts(tracts_summary, fill_var = "pct_force", 
+                    title = "Percent of SQF Stops with Force Used by Census Tract")
+ggsave(here("output/map_pct_force.png"), map_2, width = 10, height = 8)
