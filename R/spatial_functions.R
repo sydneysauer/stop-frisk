@@ -34,7 +34,7 @@ get_nyc_tracts <- function(year = 2010, crs = 2263) {
 #' @examples
 #' sqf_spatial <- make_spatial(sqf_clean)
 make_spatial <- function(data, crs = 2263) {
-  # Validate that xcoord and ycoord exist in the data 
+  # Validation: xcoord and ycoord exist in the data 
   if (!all(c("xcoord", "ycoord") %in% colnames(data))) {
     stop("Input data must contain 'xcoord' and 'ycoord' columns.")
   }
@@ -69,8 +69,14 @@ spatial_join <- function(points, polygons) {
   
   geocoded <- st_join(points, polygons, join = st_within)
   unmatched <- sum(is.na(geocoded$ct_code))
-  if (unmatched > 0) {
-    message(sprintf("Dropped %s points that did not match any polygon", format(unmatched, big.mark = ",")))
+
+  # Validation: At least one point should match a polygon
+  if (unmatched == nrow(points)) {
+    stop("No points matched any polygons. Check your data and CRS.")
+  } else if (unmatched > 0) {
+    message(sprintf("%s points did not match any polygon", format(unmatched, big.mark = ",")))
+  } else {
+    message("All points successfully matched to polygons.")
   }
   return(geocoded %>% filter(!is.na(ct_code))) # Drop points that don't match any polygon
 }
