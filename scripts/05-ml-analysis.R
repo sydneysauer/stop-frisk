@@ -1,6 +1,8 @@
 library(tidyverse)
 library(here)
 
+source(here("R/ml_functions.R"))
+
 train_data <- read_rds(here("data", "sqf_ml_train.rds"))
 holdout_data <- read_rds(here("data", "sqf_ml_holdout.rds"))
  
@@ -22,4 +24,8 @@ train_data <- train_data %>%
           weight = scale(weight))
 
 # DV distribution
-summary(train_data$arrest) # Highly skewed, only 3.5% of stops result in arrest
+summary(train_data$arrest)
+
+# Gauge accuracy of baseline model
+bm <- lm(arrest ~ 1, data = train_data)
+calculate_accuracy(bm, train_data)
