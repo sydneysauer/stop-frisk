@@ -5,26 +5,32 @@
 #' @return A numeric value representing the log loss
 log_loss <- function(actual, predicted) {
   eps <- 1e-15
-  predicted = pmin(pmax(predicted, eps), 1 - eps)
+  predicted = pmin(pmax(predicted, eps), 1 - eps) # Clip predicted probabilities to avoid log(0)
   - (sum(actual * log(predicted) + (1 - actual) * log(1 - predicted))) / length(actual)
 }
 
 #' @title calculate_accuracy
-#' @description Calculate the accuracy (log-loss) of a classification model for any given dataset
+#' @description Calculate the in-sample and out-of-sample accuracy (log-loss) of a 
+#' classification model
 #' @param model A classification model object
-#' @param data A data frame containing the data for prediction
-#' @return Log loss value representing the accuracy of the model on the given data
+#' @param newdata A data frame containing the data for out-of-sample prediction
+#' @return In sample and out of sample log-loss values
 calculate_accuracy <- function(model, newdata) {
+  # Calculate out-of-sample log loss
   y_name <- names(model.frame(model))[1]
   print(y_name)
   y      <- newdata[[y_name]]
+  print(head(y)) # NULL! This is the issue
   y_hat  <- predict(model, newdata = newdata, type = "response")
-  
-  log_loss(y, y_hat)
+  out_samp <- log_loss(y, y_hat)
+
+  # Calculate in-sample log loss
+  in_samp <- log_loss(model$model[[y_name]], model$fitted.values)
+  c("in_sample" = in_samp, "out_sample" = out_samp)
 }
 
 #' @title compare_accuracy
-#' @description Compare the accuracy (log-loss) of two classification models on a given dataset
+#' @description Compare the accuracy (log-loss) of two classification models
 #' @param model1 A classification model object (e.g., baseline model)
 #' @param model2 A classification model object (e.g., new model)
 #' @param data A data frame containing the data for prediction
@@ -33,19 +39,25 @@ compare_accuracy <- function(model1, model2, data) {
   # TODO return to this and convert to variable # models later if needed
   acc1 <- calculate_accuracy(model1, data)
   acc2 <- calculate_accuracy(model2, data)
-  improvement <- (acc1 - acc2) / acc1
-  cat("Model 1 Log-Loss: ", round(acc1, 4), "\n")
-  cat("Model 2 Log-Loss: ", round(acc2, 4), "\n")
-  cat("Improvement over Model 1: ", round(improvement * 100, 2), "%\n")
+  bind_rows(acc1, acc2) %>%
+    mutate(model = c("model1", "model2")) %>%
+    select(model, everything()) %>%
+    print()
 }
 
-#' @title report_accuracy
-#' @description Report the in-sample and out-of-sample log-loss for a classification model
-#' @param in_sample_acc A numeric value representing the in-sample log-loss
-#' @param out_sample_acc A numeric value representing the out-of-sample log-loss
-#' @return A printed summary of the in-sample and out-of-sample log-loss
-report_accuracy <- function(in_sample_acc, out_sample_acc) {
-  improvement <- (in_sample_acc - out_sample_acc) / in_sample_acc
-  cat("In-Sample Log-Loss: ", round(in_sample_acc, 3), "\n")
-  cat("Out-of-Sample Log-Loss: ", round(out_sample_acc, 3), "\n")
+#' @title cross_validate
+#' @description Perform k-fold cross-validation for a classification model
+#' @param model A classification model object
+#' @param data A data frame containing the data for cross-validation
+#' @param k The number of folds for cross-validation (default is 5)
+#' @return A data frame containing the log-loss for each fold (in and out of sample)
+cross_validate <- function(model, data, k = 5) {
+  folds <- crossv_kfold(data, k)
+  fold_results <- folds %>%
+    mutate(
+      model = map(train, ~ update(model, data = .x)),
+      acc   = map2(model, test, ~ calculate_accuracy(.x, as.data.frame(.y)))
+    ) %>%
+    tidyr::unnest_wider(acc)
+  fold_results
 }
