@@ -20,7 +20,6 @@ calculate_accuracy <- function(model, newdata) {
   y_name <- names(model.frame(model))[1]
   print(y_name)
   y      <- newdata[[y_name]]
-  print(head(y)) # NULL! This is the issue
   y_hat  <- predict(model, newdata = newdata, type = "response")
   out_samp <- log_loss(y, y_hat)
 
@@ -59,5 +58,5 @@ cross_validate <- function(model, data, k = 5) {
       acc   = map2(model, test, ~ calculate_accuracy(.x, as.data.frame(.y)))
     ) %>%
     tidyr::unnest_wider(acc)
-  fold_results
+    c("in_sample" = mean(fold_results$in_sample), "out_sample" = mean(fold_results$out_sample))
 }

@@ -74,6 +74,8 @@ compare_accuracy(m2, m3, train_data)
 
 # Let's try 5-fold cross validation (going back to m2) to see if that helps.
 cross_validate(m2, train_data, k = 5)
-# TODO: Cross validation retuning NaN for out of sample prediction. Investigate.
-# Also, think about if it makes sense to change this all to glm...
-# TODO: Add accuracy back in.
+# Here, we do see that in-sample (0.208) is better than out-of-sample (0.209).
+# But this is still better than the baseline log-loss, showing that model 2 is an improvement! 
+# Compared to a single train/validation split, cross validation is more optimistic about in-sample fit and
+# less optimistic about out-of-sample fit, which is what we expect. (Woohoo!)
+# TODO: Add accuracy back in as a metric. (maybe function calculate_raw_accuracy)
