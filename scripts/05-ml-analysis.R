@@ -31,15 +31,17 @@ train_data <- train_data %>%
           height = scale(height),
           weight = scale(weight),
           arrest = ifelse(arrest == TRUE, 1, 0)) %>%
-  na.omit() # OMITTING NA FOR NOW SO I CAN RUN THIS STUFF! FIX THIS LATER
+  na.omit() # OMITTING NA FOR NOW SO I CAN RUN THIS STUFF! FIX THIS LATER. ASK JOSCHA!!!
 
 # DV distribution
 summary(train_data$arrest)
 
 # Gauge accuracy of baseline model on training data
+# Note: Since we're operationalizing accuracy as log-loss, I call that function calculate_accuracy 
+# versus calculate_raw_accuracy which uses the 0.5 cutoff.
 bm <- lm(arrest ~ 1, data = train_data)
 calculate_accuracy(bm, validation_set)
-
+calculate_raw_accuracy(bm, validation_set) 
 
 # ==============================================================================
 # FIT MODELS AND COMPARE ACCURACY
@@ -55,6 +57,8 @@ cat("Validation set: ", nrow(validation_set), "rows\n")
 # I think physical stature, time of day, race, gender, and violence will be most predictive.
 m1 <- glm(arrest ~ age + height + weight + hour + race + male + reason_violent, data = train_set, family = binomial)
 calculate_accuracy(m1, validation_set)
+calculate_raw_accuracy(m1, validation_set, cutoff=mean(train_set$arrest)) 
+# This coarse accuracy measure isn't helping much (using 0.5 or the mean as cutoff), so I'm going to stick with log-loss going forward.
 compare_accuracy(bm, m1, train_data) # Only a tiny improvement over baseline! Shows why we need ML...
 
 # Now I'll add all the predictors at once to experiment with overfitting.
@@ -78,4 +82,3 @@ cross_validate(m2, train_data, k = 5)
 # But this is still better than the baseline log-loss, showing that model 2 is an improvement! 
 # Compared to a single train/validation split, cross validation is more optimistic about in-sample fit and
 # less optimistic about out-of-sample fit, which is what we expect. (Woohoo!)
-# TODO: Add accuracy back in as a metric. (maybe function calculate_raw_accuracy)

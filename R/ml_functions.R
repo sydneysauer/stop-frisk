@@ -28,6 +28,27 @@ calculate_accuracy <- function(model, newdata) {
   c("in_sample" = in_samp, "out_sample" = out_samp)
 }
 
+#' @title calculate_raw_accuracy
+#' @description Calculate the raw accuracy (proportion of correct classifications) for a classification model
+#' @param model A classification model object
+#' @param newdata A data frame containing the data for prediction
+#' @param cutoff A numeric value representing the cutoff for classification (default is 0.5)
+#' @return A numeric value representing the raw accuracy
+calculate_raw_accuracy <- function(model, newdata, cutoff=0.5) {
+  # Calculate out-of-sample acccuracy
+  y_name <- names(model.frame(model))[1]
+  print(y_name)
+  y      <- newdata[[y_name]]
+  y_hat  <- predict(model, newdata = newdata, type = "response")
+  out_samp <- ifelse(y_hat > cutoff, 1, 0)
+
+  # Calculate in-sample accuracy
+  in_samp <- ifelse(model$fitted.values > cutoff, 1, 0)
+
+  c("in_sample" = mean(model$model[[y_name]] == in_samp), "out_sample" = mean(y == out_samp))
+}
+
+
 #' @title compare_accuracy
 #' @description Compare the accuracy (log-loss) of two classification models
 #' @param model1 A classification model object (e.g., baseline model)
