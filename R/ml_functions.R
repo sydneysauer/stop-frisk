@@ -9,13 +9,13 @@ log_loss <- function(actual, predicted) {
   - (sum(actual * log(predicted) + (1 - actual) * log(1 - predicted))) / length(actual)
 }
 
-#' @title calculate_accuracy
-#' @description Calculate the in-sample and out-of-sample accuracy (log-loss) of a 
+#' @title calculate_performance
+#' @description Calculate the in-sample and out-of-sample performance (log-loss) of a 
 #' classification model
 #' @param model A classification model object
 #' @param newdata A data frame containing the data for out-of-sample prediction
 #' @return In sample and out of sample log-loss values
-calculate_accuracy <- function(model, newdata) {
+calculate_performance <- function(model, newdata) {
   # Calculate out-of-sample log loss
   y_name <- names(model.frame(model))[1]
   print(y_name)
@@ -49,16 +49,16 @@ calculate_raw_accuracy <- function(model, newdata, cutoff=0.5) {
 }
 
 
-#' @title compare_accuracy
-#' @description Compare the accuracy (log-loss) of two classification models
+#' @title compare_performance
+#' @description Compare the performance (log-loss) of two classification models
 #' @param model1 A classification model object (e.g., baseline model)
 #' @param model2 A classification model object (e.g., new model)
 #' @param data A data frame containing the data for prediction
 #' @return A printed summary of the log-loss for both models and the percentage improvement of model2 over model1
-compare_accuracy <- function(model1, model2, data) {
+compare_performance <- function(model1, model2, data) {
   # TODO return to this and convert to variable # models later if needed
-  acc1 <- calculate_accuracy(model1, data)
-  acc2 <- calculate_accuracy(model2, data)
+  acc1 <- calculate_performance(model1, data)
+  acc2 <- calculate_performance(model2, data)
   bind_rows(acc1, acc2) %>%
     mutate(model = c("model1", "model2")) %>%
     select(model, everything()) %>%
@@ -76,8 +76,23 @@ cross_validate <- function(model, data, k = 5) {
   fold_results <- folds %>%
     mutate(
       model = map(train, ~ update(model, data = .x)),
-      acc   = map2(model, test, ~ calculate_accuracy(.x, as.data.frame(.y)))
+      acc   = map2(model, test, ~ calculate_performance(.x, as.data.frame(.y)))
     ) %>%
     tidyr::unnest_wider(acc)
     c("in_sample" = mean(fold_results$in_sample), "out_sample" = mean(fold_results$out_sample))
+}
+
+calculate_performance_penfit <- function(model, data, newdata) {
+  y_name <- as.character(model@formula$penalized)[[2]]
+  # In-sample log loss
+  y_train <- data[[y_name]]
+  # TODO REVISE THIS
+
+  # Out-of-sample R²
+  y_test  <- newdata[[y_name]]
+  y_hat   <- predict(model, data = newdata)[, 1]
+  SSR_out <- sum((y_test - y_hat)^2)
+  SST_out <- sum((y_test - mean(y_test))^2)
+  r_sq_out <- 1 - SSR_out / SST_out
+  c("in-sample" = r_sq_in, "out-of-sample" = r_sq_out)
 }

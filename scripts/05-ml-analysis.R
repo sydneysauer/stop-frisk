@@ -1,7 +1,7 @@
 library(tidyverse)
 library(here)
-library("penalized")
-library("modelr")
+library(penalized)
+library(modelr)
 
 source(here("R/ml_functions.R"))
 
@@ -9,7 +9,7 @@ train_data <- read_rds(here("data", "sqf_ml_train.rds"))
 holdout_data <- read_rds(here("data", "sqf_ml_holdout.rds"))
  
 # ==============================================================================
-# EXPLORE AND RESCALE DATA
+# EXPLORE AND RESCALE DATA (PART A)
 # ==============================================================================
 
 # IV distributions
@@ -22,7 +22,7 @@ train_data %>%
 train_data %>%
   summarise_all(~ sum(is.na(.)))
 
-# After inspecting data, decided to transform as follows:
+# After inspecting data, decided to further transform as follows:
     # age, height, weight: standardize (mean 0, sd 1)
     # hour: set to NA if > 24 (some hours are 29, which is likely an error)
 train_data <- train_data %>%
@@ -37,14 +37,12 @@ train_data <- train_data %>%
 summary(train_data$arrest)
 
 # Gauge accuracy of baseline model on training data
-# Note: Since we're operationalizing accuracy as log-loss, I call that function calculate_accuracy 
-# versus calculate_raw_accuracy which uses the 0.5 cutoff.
 bm <- lm(arrest ~ 1, data = train_data)
-calculate_accuracy(bm, validation_set)
+calculate_performance(bm, validation_set)
 calculate_raw_accuracy(bm, validation_set) 
 
 # ==============================================================================
-# FIT MODELS AND COMPARE ACCURACY
+# FIT MODELS AND COMPARE ACCURACY (PART A)
 # ==============================================================================
 
 # Create training and validation sets
@@ -56,24 +54,24 @@ cat("Validation set: ", nrow(validation_set), "rows\n")
 # APPROACH 1: Theoretically informed model
 # I think physical stature, time of day, race, gender, and violence will be most predictive.
 m1 <- glm(arrest ~ age + height + weight + hour + race + male + reason_violent, data = train_set, family = binomial)
-calculate_accuracy(m1, validation_set)
+calculate_performance(m1, validation_set)
 calculate_raw_accuracy(m1, validation_set, cutoff=mean(train_set$arrest)) 
 # This coarse accuracy measure isn't helping much (using 0.5 or the mean as cutoff), so I'm going to stick with log-loss going forward.
-compare_accuracy(bm, m1, train_data) # Only a tiny improvement over baseline! Shows why we need ML...
+compare_performance(bm, m1, train_data) # Only a tiny improvement over baseline! Shows why we need ML...
 
 # Now I'll add all the predictors at once to experiment with overfitting.
 X  <- str_c(names(train_data)[!names(train_data) %in% c("arrest", "id")], collapse = " + ")
 f2 <- as.formula(str_c("arrest ~ ", X))
 m2 <- glm(f2, data = train_set, family = binomial)
-calculate_accuracy(m2, validation_set)
-compare_accuracy(bm, m2, train_data) # Still getting better than baseline! 
+calculate_performance(m2, validation_set)
+compare_performance(bm, m2, train_data) # Still getting better than baseline! 
 # And weirdly, out sample is better than in sample? Not what I expected!
 
 # What if we go crazy and add an interaction with race?
 f3 <- as.formula(str_c("arrest ~ (", X, ") * factor(race)"))
 m3 <- glm(f3, data = train_set, family = binomial)
-calculate_accuracy(m3, validation_set)
-compare_accuracy(m2, m3, train_data)
+calculate_performance(m3, validation_set)
+compare_performance(m2, m3, train_data)
 # Hmm, still not seeing the overfitting trends. In sample and out sample are equal here--and still better than m2. 
 
 # Let's try 5-fold cross validation (going back to m2) to see if that helps.
@@ -82,3 +80,59 @@ cross_validate(m2, train_data, k = 5)
 # But this is still better than the baseline log-loss, showing that model 2 is an improvement! 
 # Compared to a single train/validation split, cross validation is more optimistic about in-sample fit and
 # less optimistic about out-of-sample fit, which is what we expect. (Woohoo!)
+
+# ==============================================================================
+# IMPROVE PREDICTIONS (PART B)
+# ==============================================================================
+
+# FEATURE ENGINEERING
+# Create a new variable for whether the stop was in a high crime area (90th percentile+ stops)
+precinct_counts <- train_data %>%
+  group_by(precinct) %>%
+  summarise(stop_count = n()) %>%
+  arrange(desc(stop_count)) %>%
+  mutate(high_crime = stop_count >= quantile(stop_count, 0.9))
+train_data <- train_data %>%
+  left_join(precinct_counts %>% select(precinct, high_crime), by = "precinct")
+
+# Transform month into a season factor variable (since crime often seasonal)
+train_data <- train_data %>%
+  mutate(season = case_when(
+    month %in% c(12, 1, 2) ~ "winter",
+    month %in% c(3, 4, 5) ~ "spring",
+    month %in% c(6, 7, 8) ~ "summer",
+    month %in% c(9, 10, 11) ~ "fall"
+  )) %>%
+  select(-month) # Drop month so I can still use the same formula structure as before
+
+# Transform time of day into a factor variable for morning, afternoon, evening, night (since not monotonically increasing)
+train_data <- train_data %>%
+  mutate(time_of_day = case_when(
+    hour >= 6 & hour < 12 ~ "morning",
+    hour >= 12 & hour < 17 ~ "afternoon",
+    hour >= 17 & hour < 21 ~ "evening",
+    (hour >= 21 & hour <= 24) | (hour >= 0 & hour < 6) ~ "night"
+  )) %>%
+  select(-hour)
+
+# Create variable for total number of reasons for stop (since more reasons may indicate higher suspicion)
+reason_cols <- grep("^reason_", names(train_data), value = TRUE)
+train_data <- train_data %>%
+  mutate(num_reasons = rowSums(select(., all_of(reason_cols))))
+table(train_data$num_reasons) # Very few stops with more than 4 reasons, so I'll cap it at 4.
+train_data <- train_data %>%
+  mutate(num_reasons = ifelse(num_reasons > 4, 4, num_reasons))
+
+
+
+#TODO create a penfit performance function to replace calculate_accuracy, then I can call cross_validate_penfit
+
+
+
+# ==============================================================================
+# GENERATE COMPETITION SUBMISSION (PART B)
+# ==============================================================================
+
+# Questions for Joscha:
+# 1. How to make sure all the transformations I did to the training data are also done to holdout? function with crazy validation?
+# 2. What to do about missing values? I omitted them for now so I could run the code...
