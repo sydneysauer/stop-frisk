@@ -82,17 +82,55 @@ cross_validate <- function(model, data, k = 5) {
     c("in_sample" = mean(fold_results$in_sample), "out_sample" = mean(fold_results$out_sample))
 }
 
+#' @title calculate_performance_penfit
+#' @description Calculate the in-sample and out-of-sample performance (log-loss)
+#' for a penalized regression model
+#' @param model A penalized regression model object
+#' @param data A data frame containing the training data for in-sample performance
+#' @param newdata A data frame containing the data for out-of-sample prediction
+#' @return In sample and out of sample log-loss values
 calculate_performance_penfit <- function(model, data, newdata) {
+  # Out-of-sample log loss
   y_name <- as.character(model@formula$penalized)[[2]]
+  print(y_name)
+  y      <- newdata[[y_name]]
+  y_hat   <- predict(model, data = newdata)
+  probs <- if (is.matrix(y_hat) || is.data.frame(y_hat)) { # Robust to lm versus glm?
+    as.numeric(y_hat[, 1])
+  } else {
+    as.numeric(y_hat)
+  }
+  out_samp <- log_loss(y, probs)
+  
   # In-sample log loss
   y_train <- data[[y_name]]
-  # TODO REVISE THIS
+  y_hat_train <- predict(model, data = data)
+  probs <- if (is.matrix(y_hat_train) || is.data.frame(y_hat_train)) {
+    as.numeric(y_hat_train[, 1])
+  } else {
+    as.numeric(y_hat_train)
+  }
+  in_samp <- log_loss(y_train, probs)
+  
+  c("in_sample" = in_samp, "out_sample" = out_samp)
+}
 
-  # Out-of-sample R²
-  y_test  <- newdata[[y_name]]
-  y_hat   <- predict(model, data = newdata)[, 1]
-  SSR_out <- sum((y_test - y_hat)^2)
-  SST_out <- sum((y_test - mean(y_test))^2)
-  r_sq_out <- 1 - SSR_out / SST_out
-  c("in-sample" = r_sq_in, "out-of-sample" = r_sq_out)
+#' @title cross_validate_penfit
+#' @description Perform k-fold cross-validation for a penalized regression model
+#' @param data A data frame containing the data for cross-validation
+#' @param formula A formula object representing the model formula
+#' @param lambda A numeric value representing the regularization strength (lambda)
+#' @param k The number of folds for cross-validation (default is 5)
+#' @return A data frame containing the log-loss for each fold (in and out of sample)
+cross_validate_penfit <- function(data, formula, lambda, k = 5) {
+  folds <- crossv_kfold(data, k)
+  folds <- folds %>%
+    mutate(train = map(train, as.data.frame), test = map(test, as.data.frame))
+  fold_results <- folds %>%
+    mutate(
+      model = map(train, ~ penalized(formula, lambda1 = lambda, model = "logistic", data = .x)),
+      acc   = pmap(list(model, train, test), ~ calculate_performance_penfit(..1, ..2, ..3))
+    ) %>%
+    tidyr::unnest_wider(acc)
+  c("in_sample" = mean(fold_results$in_sample), "out_sample" = mean(fold_results$out_sample))
 }
