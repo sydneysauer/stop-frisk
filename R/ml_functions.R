@@ -128,7 +128,8 @@ cross_validate_penfit <- function(data, formula, lambda, k = 5) {
     mutate(train = map(train, as.data.frame), test = map(test, as.data.frame))
   fold_results <- folds %>%
     mutate(
-      model = map(train, ~ penalized(formula, lambda1 = lambda, model = "logistic", data = .x)),
+    # Note: I added a maxiter here as well because it was getting stuck in infinte loop for more complicated models.
+      model = map(train, ~ penalized(formula, lambda1 = lambda, model = "logistic", data = .x, maxiter=500)),
       acc   = pmap(list(model, train, test), ~ calculate_performance_penfit(..1, ..2, ..3))
     ) %>%
     tidyr::unnest_wider(acc)
