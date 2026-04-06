@@ -59,29 +59,30 @@ m1 <- glm(arrest ~ age + height + weight + hour + race + male + reason_violent, 
 calculate_performance(m1, validation_set)
 calculate_raw_accuracy(m1, validation_set, cutoff=mean(train_set$arrest)) 
 # This coarse accuracy measure isn't helping much (using 0.5 or the mean as cutoff), so I'm going to stick with log-loss going forward.
-compare_performance(bm, m1, train_data) # Only a tiny improvement over baseline! Shows why we need ML...
+compare_performance(bm, m1, validation_set) # Only a tiny improvement over baseline! Shows why we need ML...
 
 # Now I'll add all the predictors at once to experiment with overfitting.
 X  <- str_c(names(train_data)[!names(train_data) %in% c("arrest", "id")], collapse = " + ")
 f2 <- as.formula(str_c("arrest ~ ", X))
 m2 <- glm(f2, data = train_set, family = binomial)
 calculate_performance(m2, validation_set)
-compare_performance(bm, m2, train_data) # Still getting better than baseline! 
+compare_performance(bm, m2, validation_set) # Still getting better than baseline! 
 # And weirdly, out sample is better than in sample? Not what I expected!
 
 # What if we go crazy and add an interaction with race?
 f3 <- as.formula(str_c("arrest ~ (", X, ") * factor(race)"))
 m3 <- glm(f3, data = train_set, family = binomial)
 calculate_performance(m3, validation_set)
-compare_performance(m2, m3, train_data)
-# Hmm, still not seeing the overfitting trends. In sample and out sample are equal here--and still better than m2. 
+# Hmm, still not seeing the overfitting trends. Out sample still better. Overall performance worse than m2.
 
-# Let's try 5-fold cross validation (going back to m2) to see if that helps.
+# Let's try 5-fold cross validation to see if that helps better compare m2 and m3.
 cross_validate(m2, train_data, k = 5)
+cross_validate(m3, train_data, k = 5)
 # Here, we do see that in-sample (0.208) is better than out-of-sample (0.209).
-# But this is still better than the baseline log-loss, showing that model 2 is an improvement! 
 # Compared to a single train/validation split, cross validation is more optimistic about in-sample fit and
 # less optimistic about out-of-sample fit, which is what we expect. (Woohoo!)
+
+# Model 3 has better in-sample but worse out-of-sample, indicating that the race interaction is overfitting.
 
 # ==============================================================================
 # IMPROVE PREDICTIONS (PART B)
@@ -140,8 +141,7 @@ m4 <- glm(f4, data = train_set, family = binomial)
 
 # Performance:
 appr1 <- cross_validate(m4, validation_set) 
-appr1 # Whoa! My new variables actually helped!
-compare_performance(bm, m4, train_data) # And much better than baseline!
+appr1 # Matches the m2 out of sample, but not an improvememt.
 
 # ATTEMPT 2: REGULARIZATION EMPHASIS 
 # Now, I'll take this new model with all the features and add regularization.
@@ -149,10 +149,10 @@ compare_performance(bm, m4, train_data) # And much better than baseline!
 # Start with basic lamba=10 
 m4_lasso <- penalized(f4, lambda1 = 10, model = "logistic", data = train_set)
 appr2 <- cross_validate_penfit(train_data, f4, lambda = 10, k = 5) 
-appr2 # Even better than the non-regularized version! Let's continue in this direction.
+appr2 # Mildly better than the non-regularized version! Let's continue in this direction.
 
 # Systematically search for optimal regularization strength
-models <- tibble(lambda = seq(1, 30, 3)) %>%
+models <- tibble(lambda = seq(1, 40, 4)) %>%
   mutate(
     performance = map(lambda, ~ cross_validate_penfit(train_data, f4, lambda = ., k = 5))
   )
@@ -166,18 +166,23 @@ ggplot(results, aes(x = lambda)) +
   theme_minimal() +
   theme(legend.title = element_blank())
 
-# Ok, the graph here is telling me that lambda's optimal value is ~1, which suggests to me that I don't have enough
-# coefficients! So, in my next approach, I'm going to add a whole bunch more features and interactions.
+# Ok, the graph here is telling me that lambda's optimal value is 5, so let's try that
+m4_lasso_5 <- penalized(f4, lambda1 = 5, model = "logistic", data = train_set)
+appr2a <- cross_validate_penfit(train_data, f4, lambda = 5, k = 5) 
+appr2a # not really different...
 
 # ATTEMPT 3: INTERACTIONS EMPHASIS 
 # I will add lots of interaction terms to give my regularization something more to chew on.
 
-# I think race and location (inside/outside) could be predictive interaction terms.
+# I think race could be predictive interaction term, as above. 
+# Note: I previously added "inside" as another interaction term, but this wasn't helpful. 
+# I was also getting a glm warning here that "glm.fit: fitted probabilities numerically 0 or 1 occurred"
+# which Google says may indicate overfitting. 
+
 # I'm keeping the features I added in the approaches above, since they were helpful.
-f5 <- as.formula(str_c("arrest ~ (", X, ") * factor(race) + (", X, ") * inside"))
+f5 <- as.formula(str_c("arrest ~ (", X, ") * factor(race)"))
 m5 <- glm(f5, data = train_set, family = binomial)
-# Getting a glm warning here that "glm.fit: fitted probabilities numerically 0 or 1 occurred" which 
-# Google says may indicate overfitting. Let's cross validate and then see how it does with some regularization.
+
 appr3 <- cross_validate(m5, validation_set)
 appr3 # In sample is better than previous models, out of sample is WAY worse (yep, overfitting!)
 
@@ -185,12 +190,12 @@ appr3 # In sample is better than previous models, out of sample is WAY worse (ye
 # Cut down on overfitting from the crazy model above with regularization.
 
 # Again, start with basic lamba=10
-# This kept getting stuck at 150 nonzero coefs, so I implemented a max iterations to get close enough
+# This kept getting stuck, so I implemented a max iterations to get close enough
 m5_lasso <- penalized(f5, lambda1 = 10, model = "logistic", data = train_set, maxiter=500)
 appr4 <- cross_validate_penfit(validation_set, f5, lambda = 10, k = 5) 
-appr4 # Best yet for in sample! But out of sample is still lagging, which makes me think I need higher lambda.
+appr4 # This still isn't beating the simple model 2, which just has all the predictors.
 
-# Let's see what raising lambda might look like...
+# Let's see if different lambda values might help...
 models <- tibble(lambda = seq(5, 25, 2)) %>%
   mutate(
     performance = map(lambda, ~ cross_validate_penfit(train_data, f5, lambda = ., k = 5))
@@ -205,36 +210,29 @@ ggplot(results, aes(x = lambda)) +
   theme_minimal() +
   theme(legend.title = element_blank())
 
-# Here, the minimum log loss seems to be around lambda = 9 to 11, which is really similar to the 10. So I'll keep 10.
-# This is surprising--I thought I was really far off!
+# Here, the minimum log loss seems to be around lambda = 15, so let's try that 
+m6_lasso <- penalized(f5, lambda1 = 15, model = "logistic", data = train_set, maxiter=500)
+appr5 <- cross_validate_penfit(validation_set, f5, lambda = 15, k = 5) 
+appr5 # Ack, out of sample is worse!!!! 0.21??!?!
 
-# TODO MONDAY:
-# Run everything (minus the crazy lambda tuning) to confirm the best approach.
-# Fill in the code below with the best approach.
+# I think it's time to go back to model 4 lasso.
 
 # ==============================================================================
 # GENERATE COMPETITION SUBMISSION (PART B)
 # ==============================================================================
 
-# After much trial and error, Approach 4 is my best bet! Let's apply it to the holdout set.
+# After much trial and error, model 4 lasso with lamba=10 is my best bet! 
+# Let's apply it to the holdout set.
 
-# 0. Save a copy of all the holdout IDs, because I'll be droppping a lot of the missing rows
+# 0. Save a copy of all the holdout IDs, because I'll be dropping a lot of the missing rows
 holdout_ids <- holdout_data %>% select(id)
 
 # 1. Apply transformations and feature engineering to holdout data
-# Make the little precinct count dataset so I can merge it
-precinct_counts <- holdout_data %>%
-  group_by(precinct) %>%
-  summarise(stop_count = n()) %>%
-  arrange(desc(stop_count)) %>%
-  mutate(high_crime = stop_count >= quantile(stop_count, 0.9))
-
 holdout_data <- holdout_data %>%
   mutate(hour = ifelse(hour > 24, NA, hour),
           age = scale(age),
           height = scale(height),
-          weight = scale(weight),
-          arrest = ifelse(arrest == TRUE, 1, 0)) %>%
+          weight = scale(weight)) %>%
   na.omit() %>%
   mutate(season = case_when(
     month %in% c(12, 1, 2) ~ "winter",
@@ -257,16 +255,13 @@ holdout_data <- holdout_data %>%
 # peek at it make sure it looks good
 glimpse(holdout_data)
 
-# 2. Generate predictions with the best model (m5 with lambda = ?)
-
+# 2. Generate predictions with the best model (m4_lasso with lambda = 10)
+holdout_preds <- predict(m4_lasso, newdata = holdout_data, type = "response")
 
 # 3. Merge predictions with holdout IDs and fill in missing values (CHECK THIS CODE)
-predictions <- holdout_data %>%
-  mutate(predicted_prob = predict(m5_lasso, data = holdout_data, type = "response")) %>%
-  left_join(holdout_ids, by = "id") %>%
-  mutate(predicted_prob = ifelse(is.na(predicted_prob), mean(train_data$arrest), predicted_prob)) # Fill in missing values with mean of training data arrest rate
 # AT the end: merge all predictions from the actual prediction, then fill in missing with the mean 
 #     (of training data? or of predicted probs?).
 
 
 # 4. Validate and submit
+source("scripts/validate-submission.R")
