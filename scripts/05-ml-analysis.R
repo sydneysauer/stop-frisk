@@ -26,6 +26,8 @@ train_data %>%
 # After inspecting data, decided to further transform as follows:
     # age, height, weight: standardize (mean 0, sd 1)
     # hour: set to NA if > 24 (some hours are 29, which is likely an error)
+# Save a copy of the training data so I can keep the NAs that I'm about to drop 
+train_nas <- train_data
 train_data <- train_data %>%
   mutate(hour = ifelse(hour > 24, NA, hour),
           age = scale(age),
@@ -33,6 +35,10 @@ train_data <- train_data %>%
           weight = scale(weight),
           arrest = ifelse(arrest == TRUE, 1, 0)) %>%
   na.omit() # OMITTING NA FOR NOW SO I CAN RUN THIS STUFF! FIX THIS LATER. ASK JOSCHA!!!
+
+# Save only the dropped rows in train_nas for later use in filling in missing values in the holdout set.
+# Identify dropped rows as those not in the train_data after the transformations and NA omission.
+train_nas <- anti_join(train_nas, train_data, by = "id")
 
 # DV distribution
 summary(train_data$arrest)
@@ -255,13 +261,18 @@ holdout_data <- holdout_data %>%
 # peek at it make sure it looks good
 glimpse(holdout_data)
 
-# 2. Generate predictions with the best model (m4_lasso with lambda = 10)
-holdout_preds <- predict(m4_lasso, newdata = holdout_data, type = "response")
+# 2. Generate predictions with the best model (m4_lasso with lambda = 10) which is a penfit object
+holdout_data$predicted_probability <- predict(m4_lasso, data = holdout_data)
 
-# 3. Merge predictions with holdout IDs and fill in missing values (CHECK THIS CODE)
-# AT the end: merge all predictions from the actual prediction, then fill in missing with the mean 
-#     (of training data? or of predicted probs?).
+# 3. Merge predictions with holdout IDs and fill in missings with mean of training NA rows
+submission <- holdout_ids %>%
+  left_join(holdout_data %>% select(id, predicted_probability), by = "id") %>%
+  mutate(predicted_probability = ifelse(is.na(predicted_probability), mean(train_nas$arrest, na.rm = TRUE), predicted_probability))
 
+mean(submission$predicted_probability) # Face validity looks good - mean is 0.059.
 
-# 4. Validate and submit
-source("scripts/validate-submission.R")
+# 4. Save as CSV
+write_csv(submission, here("output", "holdout_predictions.csv"))
+
+#5. Run validation script to check for errors before submission
+source("scripts/06-validate-submission.R")
