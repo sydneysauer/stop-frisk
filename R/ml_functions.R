@@ -56,7 +56,6 @@ calculate_raw_accuracy <- function(model, newdata, cutoff=0.5) {
 #' @param data A data frame containing the data for prediction
 #' @return A printed summary of the log-loss for both models and the percentage improvement of model2 over model1
 compare_performance <- function(model1, model2, data) {
-  # TODO return to this and convert to variable # models later if needed
   acc1 <- calculate_performance(model1, data)
   acc2 <- calculate_performance(model2, data)
   bind_rows(acc1, acc2) %>%
